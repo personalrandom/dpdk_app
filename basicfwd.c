@@ -17,6 +17,7 @@
 #define NUM_MBUFS 8191
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 32
+#define SV_ETHERYPE 0x88ba
 
 /* basicfwd.c: Basic DPDK skeleton forwarding example. */
 
@@ -117,6 +118,9 @@ static __rte_noreturn void
 lcore_main(void)
 {
 	uint16_t port;
+	struct rte_ether_hdr *eth_hdr;
+	uint16_t ethertype;
+	int j;
 
 	/*
 	 * Check that the port is on the same NUMA node as the polling thread
@@ -146,19 +150,47 @@ lcore_main(void)
 			const uint16_t nb_rx = rte_eth_rx_burst(port, 0,
 					bufs, BURST_SIZE);
 
-			if (unlikely(nb_rx == 0))
-				continue;
+			if (nb_rx) {
+				for (j = 0; j < nb_rx; j++) {
+					struct rte_mbuf *m = bufs[j];
 
-			/* Send burst of TX packets, to second port of pair. */
-			const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
-					bufs, nb_rx);
-
-			/* Free any unsent packets. */
-			if (unlikely(nb_tx < nb_rx)) {
-				uint16_t buf;
-				for (buf = nb_tx; buf < nb_rx; buf++)
-					rte_pktmbuf_free(bufs[buf]);
+					eth_hdr = rte_pktmbuf_mtod(m,
+							struct rte_ether_hdr *);
+					ethertype = eth_hdr->ether_type;
+					if(rte_cpu_to_be_16(SV_ETHERYPE) == ethertype)
+					{
+						printf("SV received !\n");
+						rte_pktmbuf_free(m);
+					}
+					else
+					{
+						rte_pktmbuf_free(m);
+					}
+					
+				}
 			}
+			// if (unlikely(nb_rx == 0))
+			// 	continue;
+			// eth_hdr = rte_pktmbuf_mtod(m,
+			// 				struct rte_ether_hdr *);
+			// ethertype = eth_hdr->ether_type;
+
+
+			// printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
+			// rte_lcore_id());
+			// /* Send burst of TX packets, to second port of pair. */
+			// const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
+			// 		bufs, nb_rx);
+
+			// /* Free any unsent packets. */
+			// if (unlikely(nb_tx < nb_rx)) {
+			// 	uint16_t buf;
+			// 	for (buf = nb_tx; buf < nb_rx; buf++)
+			// 		rte_pktmbuf_free(bufs[buf]);
+			// }
+			// uint16_t buf;
+			// for (buf = 0; buf < nb_rx; buf++)
+			// 	rte_pktmbuf_free(bufs[buf]);
 		}
 	}
 	/* >8 End of loop. */
@@ -187,8 +219,8 @@ main(int argc, char *argv[])
 
 	/* Check that there is an even number of ports to send/receive on. */
 	nb_ports = rte_eth_dev_count_avail();
-	if (nb_ports < 2 || (nb_ports & 1))
-		rte_exit(EXIT_FAILURE, "Error: number of ports must be even\n");
+	// if (nb_ports < 2 || (nb_ports & 1))
+	// 	rte_exit(EXIT_FAILURE, "Error: number of ports must be even\n");
 
 	/* Creates a new mempool in memory to hold the mbufs. */
 
