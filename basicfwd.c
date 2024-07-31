@@ -121,6 +121,8 @@ lcore_main(void)
 	struct rte_ether_hdr *eth_hdr;
 	uint16_t ethertype;
 	int j;
+	struct rte_ether_addr src_mac;
+	struct rte_ether_addr dst_mac;
 
 	/*
 	 * Check that the port is on the same NUMA node as the polling thread
@@ -160,7 +162,15 @@ lcore_main(void)
 					if(rte_cpu_to_be_16(SV_ETHERYPE) == ethertype)
 					{
 						printf("SV received !\n");
-						rte_pktmbuf_free(m);
+						rte_ether_addr_copy(&eth_hdr->src_addr, &dst_mac);
+						rte_ether_addr_copy(&eth_hdr->dst_addr, &src_mac);
+						rte_ether_addr_copy(&dst_mac, &eth_hdr->dst_addr);
+						rte_ether_addr_copy(&src_mac, &eth_hdr->src_addr);
+						const uint16_t nb_tx = rte_eth_tx_burst(port, 0,
+								&m, 1);
+						if (unlikely(!nb_tx)) {
+							rte_pktmbuf_free(m);
+						}
 					}
 					else
 					{
