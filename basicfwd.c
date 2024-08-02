@@ -10,6 +10,7 @@
 #include <rte_cycles.h>
 #include <rte_lcore.h>
 #include <rte_mbuf.h>
+#include <time.h>
 
 #define RX_RING_SIZE 1024
 #define TX_RING_SIZE 1024
@@ -17,14 +18,19 @@
 #define NUM_MBUFS 8191
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 32
-#define SV_ETHERYPE 0x88ba
+#define SV_ETHERTYPE 0x88BA
+#define GOOSE_ETHERTYPE 0x88B8
 
-/* basicfwd.c: Basic DPDK skeleton forwarding example. */
+#define CYCLE_TIME_NS (300 * 1000)
+#define NSEC_PER_SEC (1000 * 1000 * 1000)
 
-/*
- * Initializes a given port using global settings and with the RX buffers
- * coming from the mbuf_pool passed as a parameter.
- */
+static void norm_ts(struct timespec *tv)
+{
+	while (tv->tv_nsec >= NSEC_PER_SEC) {
+		tv->tv_sec++;
+		tv->tv_nsec -= NSEC_PER_SEC;
+	}
+}
 
 /* Main functional part of port initialization. 8< */
 static inline int
@@ -99,7 +105,7 @@ port_init(uint16_t port, struct rte_mempool *mbuf_pool)
 			port, RTE_ETHER_ADDR_BYTES(&addr));
 
 	/* Enable RX in promiscuous mode for the Ethernet device. */
-	retval = rte_eth_promiscuous_enable(port);
+	// retval = rte_eth_promiscuous_enable(port);
 	/* End of setting RX port in promiscuous mode. */
 	if (retval != 0)
 		return retval;
@@ -123,6 +129,9 @@ lcore_main(void)
 	int j;
 	struct rte_ether_addr src_mac;
 	struct rte_ether_addr dst_mac;
+	struct timespec tv;
+	uint8_t * data;
+	uint16_t appid;
 
 	/*
 	 * Check that the port is on the same NUMA node as the polling thread
@@ -140,6 +149,7 @@ lcore_main(void)
 			rte_lcore_id());
 
 	/* Main work of application loop. 8< */
+	clock_gettime(CLOCK_MONOTONIC, &tv);
 	for (;;) {
 		/*
 		 * Receive packets on a port and forward them on the paired
@@ -159,9 +169,12 @@ lcore_main(void)
 					eth_hdr = rte_pktmbuf_mtod(m,
 							struct rte_ether_hdr *);
 					ethertype = eth_hdr->ether_type;
-					if(rte_cpu_to_be_16(SV_ETHERYPE) == ethertype)
+					if(rte_cpu_to_be_16(SV_ETHERTYPE) == ethertype || rte_cpu_to_be_16(GOOSE_ETHERTYPE) == ethertype)
 					{
-						printf("SV received !\n");
+						data = rte_pktmbuf_mtod_offset(m, uint8_t *, 14);
+						data[1] = data[0];
+						data[0] = 0; 
+						printf("SV/Goose received !\n");
 						rte_ether_addr_copy(&eth_hdr->src_addr, &dst_mac);
 						rte_ether_addr_copy(&eth_hdr->dst_addr, &src_mac);
 						rte_ether_addr_copy(&dst_mac, &eth_hdr->dst_addr);
@@ -179,28 +192,10 @@ lcore_main(void)
 					
 				}
 			}
-			// if (unlikely(nb_rx == 0))
-			// 	continue;
-			// eth_hdr = rte_pktmbuf_mtod(m,
-			// 				struct rte_ether_hdr *);
-			// ethertype = eth_hdr->ether_type;
-
-
-			// printf("\nCore %u forwarding packets. [Ctrl+C to quit]\n",
-			// rte_lcore_id());
-			// /* Send burst of TX packets, to second port of pair. */
-			// const uint16_t nb_tx = rte_eth_tx_burst(port ^ 1, 0,
-			// 		bufs, nb_rx);
-
-			// /* Free any unsent packets. */
-			// if (unlikely(nb_tx < nb_rx)) {
-			// 	uint16_t buf;
-			// 	for (buf = nb_tx; buf < nb_rx; buf++)
-			// 		rte_pktmbuf_free(bufs[buf]);
-			// }
-			// uint16_t buf;
-			// for (buf = 0; buf < nb_rx; buf++)
-			// 	rte_pktmbuf_free(bufs[buf]);
+			/* wait for next cycle */
+			tv.tv_nsec += CYCLE_TIME_NS;
+			norm_ts(&tv);
+			clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &tv, NULL);
 		}
 	}
 	/* >8 End of loop. */
