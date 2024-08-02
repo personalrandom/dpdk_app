@@ -1,12 +1,17 @@
-# SPDX-License-Identifier: BSD-3-Clause
-# Copyright(c) 2017 Intel Corporation
+project('dpdk_loopback',
+        'c',
+        version : '1.0.0',)
 
-# meson file, for building this example as part of a main DPDK build.
-#
-# To build this example as a standalone application with an already-installed
-# DPDK instance, use 'make'
+main_sources = files(
+        'dpdk_loopback.c',
+)
 
-allow_experimental_apis = true
-sources = files(
-        'basicfwd.c',
+# Dependencies
+pthread_dep = dependency('threads')
+dpdk_dep = dependency('libdpdk')
+
+executable(
+    'dpdk_loopback', 
+    sources : [main_sources, ],
+    dependencies: [pthread_dep, dpdk_dep,],
 )
